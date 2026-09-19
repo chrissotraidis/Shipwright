@@ -9,6 +9,7 @@
 
 #include "mod_menu.h"
 #include "ModCatalog.h"
+#include "ModPackImport.h"
 #include <nlohmann/json.hpp>
 #ifdef __IOS__
 #include "../../ios/HarkinianPadModImport.h"
@@ -246,7 +247,13 @@ void UpdateModFiles(bool init = false, bool reset = false) {
     size_t loaded = 0;
     if (init) {
         for (const auto& id : enabledModFiles) {
-            if (GetArchiveManager()->AddArchive(filePaths.at(id).generic_string())) ++loaded;
+            try {
+                // Also preflight manually copied packs before the runtime opens them.
+                ModPackImport::Validate(filePaths.at(id));
+                if (GetArchiveManager()->AddArchive(filePaths.at(id).generic_string())) ++loaded;
+            } catch (const std::exception&) {
+                SPDLOG_WARN("HarkinianPad mods: archive preflight rejected a pack");
+            }
         }
         SPDLOG_INFO("HarkinianPad mods: discovered={}, enabled={}, disabled={}, loaded={}",
                     filePaths.size(), enabledModFiles.size(), disabledModFiles.size(), loaded);

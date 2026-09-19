@@ -13,7 +13,8 @@ namespace ModPackImport {
 namespace fs = std::filesystem;
 namespace {
 constexpr uint64_t MaxBytes = 16ULL * 1024 * 1024 * 1024;
-constexpr zip_int64_t MaxEntries = 100000;
+constexpr uint64_t MaxResourceBytes = 256ULL * 1024 * 1024;
+constexpr uint64_t MaxEntries = 100000;
 using Zip = std::unique_ptr<zip_t, decltype(&zip_discard)>;
 std::string Extension(const fs::path& path) {
     auto ext = path.extension().string();
@@ -30,18 +31,19 @@ bool Pack(const fs::path& path) {
 Zip OpenZip(const fs::path& path) {
     Zip zip(zip_open(path.string().c_str(), ZIP_RDONLY | ZIP_CHECKCONS, nullptr), zip_discard);
     if (!zip || zip_get_num_entries(zip.get(), 0) <= 0 ||
-        zip_get_num_entries(zip.get(), 0) > MaxEntries)
+        static_cast<uint64_t>(zip_get_num_entries(zip.get(), 0)) > MaxEntries)
         throw std::runtime_error("Invalid, empty or oversized archive.");
     return zip;
 }
-void Validate(const fs::path& path) {
+void ValidateArchive(const fs::path& path) {
     if (fs::file_size(path) > MaxBytes) throw std::runtime_error("Pack exceeds the 16 GiB import limit.");
     if (Extension(path) == ".o2r") {
         auto zip = OpenZip(path);
         uint64_t total = 0;
         for (zip_int64_t i = 0; i < zip_get_num_entries(zip.get(), 0); ++i) {
             zip_stat_t entry;
-            if (zip_stat_index(zip.get(), i, 0, &entry) || entry.encryption_method != ZIP_EM_NONE ||
+            if (zip_stat_index(zip.get(), i, 0, &entry) || !entry.name || !entry.name[0] ||
+                entry.encryption_method != ZIP_EM_NONE || entry.size > MaxResourceBytes ||
                 entry.size > MaxBytes - total)
                 throw std::runtime_error("Encrypted or oversized pack content is unsupported.");
             total += entry.size;
@@ -52,12 +54,42 @@ void Validate(const fs::path& path) {
         HANDLE archive = nullptr;
         if (!SFileOpenArchive(path.string().c_str(), 0, MPQ_OPEN_READ_ONLY, &archive))
             throw std::runtime_error("Invalid OTR archive.");
+        bool valid = false;
+        HANDLE list = nullptr;
+        // The selected runtime dereferences (listfile) when opening OTRs.
+        // Merely opening an arbitrary MPQ is not sufficient validation.
+        if (SFileOpenFileEx(archive, "(listfile)", 0, &list)) {
+            DWORD high = 0;
+            DWORD size = SFileGetFileSize(list, &high);
+            if (!high && size > 0 && size <= MaxResourceBytes) {
+                std::array<char, 64 * 1024> buffer;
+                uint64_t readTotal = 0;
+                DWORD bytes = 0;
+                while (SFileReadFile(list, buffer.data(), buffer.size(), &bytes, nullptr)) readTotal += bytes;
+                readTotal += bytes;
+                valid = readTotal == size;
+            }
+            SFileCloseFile(list);
+        }
+        SFILE_FIND_DATA entry;
+        HANDLE search = SFileFindFirstFile(archive, "*", &entry, nullptr);
+        uint64_t total = 0, entries = 0;
+        if (search) {
+            do {
+                if (++entries > MaxEntries || entry.dwFileSize > MaxResourceBytes ||
+                    entry.dwFileSize > MaxBytes - total) { valid = false; break; }
+                total += entry.dwFileSize;
+            } while (SFileFindNextFile(search, &entry));
+            SFileFindClose(search);
+        } else valid = false;
         SFileCloseArchive(archive);
+        if (!valid) throw std::runtime_error("OTR has no readable file list or exceeds resource limits.");
     }
 #endif
     else throw std::runtime_error("Choose a SoH .o2r or .otr pack, or a ZIP containing packs. Extract .7z first.");
 }
 }
+void Validate(const fs::path& input) { ValidateArchive(input); }
 size_t Import(const fs::path& input, const fs::path& destination) {
     // The caller chooses an unused destination. Exclusive creation protects existing data.
     if (!fs::create_directory(destination)) throw std::runtime_error("Import destination already exists.");
