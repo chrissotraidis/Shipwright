@@ -144,7 +144,8 @@ list(APPEND soh__ ${CMAKE_CURRENT_SOURCE_DIR}/soh/Enhancements/speechsynthesizer
 if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
     list(FILTER soh__ EXCLUDE REGEX "^soh/Network/")
     list(FILTER soh__ EXCLUDE REGEX "^soh/SohGui/SohMenuNetwork\\.cpp$")
-    list(APPEND soh__ ${CMAKE_CURRENT_SOURCE_DIR}/ios/HarkinianPadTouchControls.mm)
+    list(APPEND soh__ ${CMAKE_CURRENT_SOURCE_DIR}/ios/HarkinianPadTouchControls.mm ${CMAKE_CURRENT_SOURCE_DIR}/ios/HarkinianPadModImport.mm)
+    set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/ios/HarkinianPadModImport.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
 endif()
 
 # Create source groups that match the real file directory paths
@@ -842,6 +843,10 @@ INSTALL(FILES ${CMAKE_BINARY_DIR}/gamecontrollerdb.txt DESTINATION ../MacOS COMP
 INSTALL(FILES ${CMAKE_BINARY_DIR}/soh/soh.o2r DESTINATION ../Resources COMPONENT ship)
 elseif(NOT "${CMAKE_SYSTEM_NAME}" MATCHES "iOS|NintendoSwitch|CafeOS")
 INSTALL(FILES ${CMAKE_BINARY_DIR}/gamecontrollerdb.txt DESTINATION . COMPONENT ship)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    target_link_libraries(${PROJECT_NAME} PRIVATE "-framework UniformTypeIdentifiers")
 endif()
 
 if(CMAKE_SYSTEM_NAME MATCHES "NintendoSwitch|CafeOS")
