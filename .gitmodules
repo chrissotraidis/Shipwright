@@ -1,10 +1,10 @@
 [submodule "libultraship"]
 	path = libultraship
-	url = https://github.com/kenix3/libultraship.git
-	branch = port-maintenance
+	url = https://github.com/chrissotraidis/libultraship.git
+	branch = codex/harkinianpad-ios
 [submodule "ZAPDTR"]
 	path = ZAPDTR
-	url = https://github.com/harbourmasters/ZAPDTR
+	url = https://github.com/chrissotraidis/ZAPDTR.git
 [submodule "OTRExporter"]
 	path = OTRExporter
 	url = https://github.com/harbourmasters/OTRExporter
