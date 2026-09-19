@@ -14,6 +14,10 @@
 #include "soh/SaveManager.h"
 #include "soh/framebuffer_effects.h"
 
+#ifdef __IOS__
+#include "ios/HarkinianPadTouchControls.h"
+#endif
+
 #include <time.h>
 #include <assert.h>
 
@@ -197,6 +201,10 @@ Gfx* Play_SetFog(PlayState* play, Gfx* gfx) {
 void Play_Destroy(GameState* thisx) {
     PlayState* play = (PlayState*)thisx;
     Player* player = GET_PLAYER(play);
+
+#ifdef __IOS__
+    HarkinianPad_SetNativeHudTouchGameplayActive(0);
+#endif
 
     GameInteractor_ExecuteOnPlayDestroy();
 

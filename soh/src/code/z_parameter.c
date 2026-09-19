@@ -20,6 +20,13 @@
 #include "soh/Enhancements/randomizer/randomizer_grotto.h"
 #include "soh/OTRGlobals.h"
 #include "soh/ResourceManagerHelpers.h"
+
+#ifdef __IOS__
+#include "ios/HarkinianPadTouchControls.h"
+#define HARKINIANPAD_TOUCH_ALPHA(alpha) HarkinianPad_GetNativeHudTouchAlpha(alpha)
+#else
+#define HARKINIANPAD_TOUCH_ALPHA(alpha) (alpha)
+#endif
 #include "soh/Enhancements/gameplaystats.h"
 #include "soh/ObjectExtension/ActorMaximumHealth.h"
 
@@ -4139,13 +4146,78 @@ void Interface_DrawItemButtons(PlayState* play) {
         C_Down_BTN_Pos[0] = OTRGetRectDimensionFromRightEdge(C_Down_BTN_Pos_ori[0]);
     }
 
+    int CLeftDrawSize = R_ITEM_BTN_WIDTH(1);
+    int CDownDrawSize = R_ITEM_BTN_WIDTH(2);
+    int CRightDrawSize = R_ITEM_BTN_WIDTH(3);
+    int CLeftDrawDD = R_ITEM_BTN_DD(1) << 1;
+    int CDownDrawDD = R_ITEM_BTN_DD(2) << 1;
+    int CRightDrawDD = R_ITEM_BTN_DD(3) << 1;
+    float nativeHudBScale = 1.0f;
+    float nativeHudCScale = 1.0f;
+#ifdef __IOS__
+    nativeHudBScale =
+        HarkinianPad_GetNativeHudButtonScale(HARKINIANPAD_HUD_BUTTON_B, OTRGetAspectRatio());
+    nativeHudCScale =
+        HarkinianPad_GetNativeHudButtonScale(HARKINIANPAD_HUD_BUTTON_C_LEFT, OTRGetAspectRatio());
+    if (nativeHudBScale != 1.0f) {
+        BBtnScaled = MAX(1, BBtnScaled * nativeHudBScale);
+        BBtn_factor = (1 << 10) * BBtn_Size / BBtnScaled;
+    }
+    if (nativeHudCScale != 1.0f) {
+        CLeftScaled = MAX(1, CLeftScaled * nativeHudCScale);
+        CRightScaled = MAX(1, CRightScaled * nativeHudCScale);
+        CUpScaled = MAX(1, CUpScaled * nativeHudCScale);
+        CDownScaled = MAX(1, CDownScaled * nativeHudCScale);
+        CLeft_factor = (1 << 10) * C_Left_BTN_Size / CLeftScaled;
+        CRight_factor = (1 << 10) * C_Right_BTN_Size / CRightScaled;
+        CUp_factor = (1 << 10) * C_Up_BTN_Size / CUpScaled;
+        CDown_factor = (1 << 10) * C_Down_BTN_Size / CDownScaled;
+        PositionAdjustment = CDownScaled / 2;
+        CLeftDrawSize = CLeftScaled;
+        CDownDrawSize = CDownScaled;
+        CRightDrawSize = CRightScaled;
+        CLeftDrawDD = CLeft_factor;
+        CDownDrawDD = CDown_factor;
+        CRightDrawDD = CRight_factor;
+    }
+
+    float nativeHudX;
+    float nativeHudY;
+    if (HarkinianPad_GetNativeHudButtonCenter(HARKINIANPAD_HUD_BUTTON_B, OTRGetAspectRatio(), &nativeHudX,
+                                               &nativeHudY)) {
+        PosX_BtnB = nativeHudX - BBtnScaled * 0.5f;
+        PosY_BtnB = nativeHudY - BBtnScaled * 0.5f;
+    }
+    if (HarkinianPad_GetNativeHudButtonCenter(HARKINIANPAD_HUD_BUTTON_C_LEFT, OTRGetAspectRatio(), &nativeHudX,
+                                               &nativeHudY)) {
+        C_Left_BTN_Pos[0] = nativeHudX - CLeftScaled * 0.5f;
+        C_Left_BTN_Pos[1] = nativeHudY - CLeftScaled * 0.5f;
+    }
+    if (HarkinianPad_GetNativeHudButtonCenter(HARKINIANPAD_HUD_BUTTON_C_RIGHT, OTRGetAspectRatio(), &nativeHudX,
+                                               &nativeHudY)) {
+        C_Right_BTN_Pos[0] = nativeHudX - CRightScaled * 0.5f;
+        C_Right_BTN_Pos[1] = nativeHudY - CRightScaled * 0.5f;
+    }
+    if (HarkinianPad_GetNativeHudButtonCenter(HARKINIANPAD_HUD_BUTTON_C_UP, OTRGetAspectRatio(), &nativeHudX,
+                                               &nativeHudY)) {
+        C_Up_BTN_Pos[0] = nativeHudX - CUpScaled * 0.5f;
+        C_Up_BTN_Pos[1] = nativeHudY - CUpScaled * 0.5f;
+    }
+    if (HarkinianPad_GetNativeHudButtonCenter(HARKINIANPAD_HUD_BUTTON_C_DOWN, OTRGetAspectRatio(), &nativeHudX,
+                                               &nativeHudY)) {
+        C_Down_BTN_Pos[0] = nativeHudX - CDownScaled * 0.5f;
+        C_Down_BTN_Pos[1] = nativeHudY - CDownScaled * 0.5f;
+    }
+#endif
+
     OPEN_DISPS(play->state.gfxCtx);
 
     // B Button Color & Texture
     // Also loads the Item Button Texture reused by other buttons afterwards
     gDPPipeSync(OVERLAY_DISP++);
     gDPSetCombineMode(OVERLAY_DISP++, G_CC_MODULATEIA_PRIM, G_CC_MODULATEIA_PRIM);
-    gDPSetPrimColor(OVERLAY_DISP++, 0, 0, bButtonColor.r, bButtonColor.g, bButtonColor.b, interfaceCtx->bAlpha);
+    gDPSetPrimColor(OVERLAY_DISP++, 0, 0, bButtonColor.r, bButtonColor.g, bButtonColor.b,
+                    HARKINIANPAD_TOUCH_ALPHA(interfaceCtx->bAlpha));
     gDPSetEnvColor(OVERLAY_DISP++, 0, 0, 0, 255);
 
     OVERLAY_DISP = Gfx_TextureIA8(OVERLAY_DISP, gButtonBackgroundTex, BBtn_Size, BBtn_Size, PosX_BtnB, PosY_BtnB,
@@ -4154,27 +4226,27 @@ void Interface_DrawItemButtons(PlayState* play) {
     // C-Left Button Color & Texture
     gDPPipeSync(OVERLAY_DISP++);
     gDPSetPrimColor(OVERLAY_DISP++, 0, 0, cLeftButtonColor.r, cLeftButtonColor.g, cLeftButtonColor.b,
-                    interfaceCtx->cLeftAlpha);
+                    HARKINIANPAD_TOUCH_ALPHA(interfaceCtx->cLeftAlpha));
     gSPWideTextureRectangle(OVERLAY_DISP++, C_Left_BTN_Pos[0] << 2, C_Left_BTN_Pos[1] << 2,
-                            (C_Left_BTN_Pos[0] + R_ITEM_BTN_WIDTH(1)) << 2,
-                            (C_Left_BTN_Pos[1] + R_ITEM_BTN_WIDTH(1)) << 2, G_TX_RENDERTILE, 0, 0,
-                            R_ITEM_BTN_DD(1) << 1, R_ITEM_BTN_DD(1) << 1);
+                            (C_Left_BTN_Pos[0] + CLeftDrawSize) << 2,
+                            (C_Left_BTN_Pos[1] + CLeftDrawSize) << 2, G_TX_RENDERTILE, 0, 0,
+                            CLeftDrawDD, CLeftDrawDD);
 
     // C-Down Button Color & Texture
     gDPSetPrimColor(OVERLAY_DISP++, 0, 0, cDownButtonColor.r, cDownButtonColor.g, cDownButtonColor.b,
-                    interfaceCtx->cDownAlpha);
+                    HARKINIANPAD_TOUCH_ALPHA(interfaceCtx->cDownAlpha));
     gSPWideTextureRectangle(OVERLAY_DISP++, C_Down_BTN_Pos[0] << 2, C_Down_BTN_Pos[1] << 2,
-                            (C_Down_BTN_Pos[0] + R_ITEM_BTN_WIDTH(2)) << 2,
-                            (C_Down_BTN_Pos[1] + R_ITEM_BTN_WIDTH(2)) << 2, G_TX_RENDERTILE, 0, 0,
-                            R_ITEM_BTN_DD(2) << 1, R_ITEM_BTN_DD(2) << 1);
+                            (C_Down_BTN_Pos[0] + CDownDrawSize) << 2,
+                            (C_Down_BTN_Pos[1] + CDownDrawSize) << 2, G_TX_RENDERTILE, 0, 0,
+                            CDownDrawDD, CDownDrawDD);
 
     // C-Right Button Color & Texture
     gDPSetPrimColor(OVERLAY_DISP++, 0, 0, cRightButtonColor.r, cRightButtonColor.g, cRightButtonColor.b,
-                    interfaceCtx->cRightAlpha);
+                    HARKINIANPAD_TOUCH_ALPHA(interfaceCtx->cRightAlpha));
     gSPWideTextureRectangle(OVERLAY_DISP++, C_Right_BTN_Pos[0] << 2, C_Right_BTN_Pos[1] << 2,
-                            (C_Right_BTN_Pos[0] + R_ITEM_BTN_WIDTH(3)) << 2,
-                            (C_Right_BTN_Pos[1] + R_ITEM_BTN_WIDTH(3)) << 2, G_TX_RENDERTILE, 0, 0,
-                            R_ITEM_BTN_DD(3) << 1, R_ITEM_BTN_DD(3) << 1);
+                            (C_Right_BTN_Pos[0] + CRightDrawSize) << 2,
+                            (C_Right_BTN_Pos[1] + CRightDrawSize) << 2, G_TX_RENDERTILE, 0, 0,
+                            CRightDrawDD, CRightDrawDD);
 
     if ((pauseCtx->state < 8) || (pauseCtx->state >= 18)) {
         if ((play->pauseCtx.state != 0) || (play->pauseCtx.debugState != 0)) {
@@ -4230,13 +4302,15 @@ void Interface_DrawItemButtons(PlayState* play) {
                 temp = interfaceCtx->healthAlpha;
             }
 
-            gDPSetPrimColor(OVERLAY_DISP++, 0, 0, cUpButtonColor.r, cUpButtonColor.g, cUpButtonColor.b, temp);
+            gDPSetPrimColor(OVERLAY_DISP++, 0, 0, cUpButtonColor.r, cUpButtonColor.g, cUpButtonColor.b,
+                            HARKINIANPAD_TOUCH_ALPHA(temp));
             gDPSetCombineMode(OVERLAY_DISP++, G_CC_MODULATEIA_PRIM, G_CC_MODULATEIA_PRIM);
             gSPWideTextureRectangle(OVERLAY_DISP++, C_Up_BTN_Pos[0] << 2, C_Up_BTN_Pos[1] << 2,
-                                    (C_Up_BTN_Pos[0] + 16) << 2, (C_Up_BTN_Pos[1] + 16) << 2, G_TX_RENDERTILE, 0, 0,
-                                    2 << 10, 2 << 10);
+                                    (C_Up_BTN_Pos[0] + CUpScaled) << 2,
+                                    (C_Up_BTN_Pos[1] + CUpScaled) << 2, G_TX_RENDERTILE, 0, 0,
+                                    CUp_factor, CUp_factor);
             gDPPipeSync(OVERLAY_DISP++);
-            gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 255, 255, 255, temp);
+            gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 255, 255, 255, HARKINIANPAD_TOUCH_ALPHA(temp));
             gDPSetEnvColor(OVERLAY_DISP++, 0, 0, 0, 0);
             gDPSetCombineLERP(OVERLAY_DISP++, PRIMITIVE, ENVIRONMENT, TEXEL0, ENVIRONMENT, TEXEL0, 0, PRIMITIVE, 0,
                               PRIMITIVE, ENVIRONMENT, TEXEL0, ENVIRONMENT, TEXEL0, 0, PRIMITIVE, 0);
@@ -4245,9 +4319,15 @@ void Interface_DrawItemButtons(PlayState* play) {
                                    G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMASK, G_TX_NOMASK,
                                    G_TX_NOLOD, G_TX_NOLOD);
 
-            gSPWideTextureRectangle(OVERLAY_DISP++, C_Up_BTN_Pos[0] - LabelX_Navi << 2,
-                                    C_Up_BTN_Pos[1] + LabelY_Navi << 2, (C_Up_BTN_Pos[0] - LabelX_Navi + 32) << 2,
-                                    (C_Up_BTN_Pos[1] + LabelY_Navi + 8) << 2, G_TX_RENDERTILE, 0, 0, 1 << 10, 1 << 10);
+            const s16 naviLabelWidth = MAX(1, 32 * nativeHudCScale);
+            const s16 naviLabelHeight = MAX(1, 8 * nativeHudCScale);
+            const s16 naviLabelX = C_Up_BTN_Pos[0] + (CUpScaled - naviLabelWidth) / 2;
+            const s16 naviLabelY = C_Up_BTN_Pos[1] + MAX(1, LabelY_Navi * nativeHudCScale);
+            gSPWideTextureRectangle(
+                OVERLAY_DISP++, naviLabelX << 2, naviLabelY << 2,
+                (naviLabelX + naviLabelWidth) << 2, (naviLabelY + naviLabelHeight) << 2,
+                G_TX_RENDERTILE, 0, 0, (1 << 10) * 32 / naviLabelWidth,
+                (1 << 10) * 8 / naviLabelHeight);
         }
 
         sCUpTimer--;
@@ -4379,15 +4459,30 @@ void Interface_DrawItemButtons(PlayState* play) {
                 ItemIconPos[2][1] = ItemIconPos_ori[2][1];
             }
 
+#ifdef __IOS__
+            static const s16 nativeHudButtons[] = {
+                HARKINIANPAD_HUD_BUTTON_C_LEFT,
+                HARKINIANPAD_HUD_BUTTON_C_DOWN,
+                HARKINIANPAD_HUD_BUTTON_C_RIGHT,
+            };
+            float nativeHudX;
+            float nativeHudY;
+            if (HarkinianPad_GetNativeHudButtonCenter(nativeHudButtons[temp - 1], OTRGetAspectRatio(), &nativeHudX,
+                                                       &nativeHudY)) {
+                ItemIconPos[temp - 1][0] = nativeHudX - ItemIconWidthFactor[temp - 1][0] * 0.5f;
+                ItemIconPos[temp - 1][1] = nativeHudY - ItemIconWidthFactor[temp - 1][0] * 0.5f;
+            }
+#endif
+
             if (temp == 1) {
                 gDPSetPrimColor(OVERLAY_DISP++, 0, 0, cLeftButtonColor.r, cLeftButtonColor.g, cLeftButtonColor.b,
-                                interfaceCtx->cLeftAlpha);
+                                HARKINIANPAD_TOUCH_ALPHA(interfaceCtx->cLeftAlpha));
             } else if (temp == 2) {
                 gDPSetPrimColor(OVERLAY_DISP++, 0, 0, cDownButtonColor.r, cDownButtonColor.g, cDownButtonColor.b,
-                                interfaceCtx->cDownAlpha);
+                                HARKINIANPAD_TOUCH_ALPHA(interfaceCtx->cDownAlpha));
             } else {
                 gDPSetPrimColor(OVERLAY_DISP++, 0, 0, cRightButtonColor.r, cRightButtonColor.g, cRightButtonColor.b,
-                                interfaceCtx->cRightAlpha);
+                                HARKINIANPAD_TOUCH_ALPHA(interfaceCtx->cRightAlpha));
             }
 
             OVERLAY_DISP = Gfx_TextureIA8(OVERLAY_DISP, ((u8*)gButtonBackgroundTex), 32, 32, ItemIconPos[temp - 1][0],
@@ -4478,9 +4573,14 @@ void Interface_DrawItemIconTexture(PlayState* play, void* texture, s16 button) {
                                         { DPAD_DOWN_X + X_Margins_DPad_Items, DPAD_DOWN_Y + Y_Margins_DPad_Items },
                                         { DPAD_LEFT_X + X_Margins_DPad_Items, DPAD_LEFT_Y + Y_Margins_DPad_Items },
                                         { DPAD_RIGHT_X + X_Margins_DPad_Items, DPAD_RIGHT_Y + Y_Margins_DPad_Items } };
-    u16 ItemsSlotsAlpha[8] = { interfaceCtx->bAlpha,        interfaceCtx->cLeftAlpha,    interfaceCtx->cRightAlpha,
-                               interfaceCtx->cDownAlpha,    interfaceCtx->dpadUpAlpha,   interfaceCtx->dpadDownAlpha,
-                               interfaceCtx->dpadLeftAlpha, interfaceCtx->dpadRightAlpha };
+    u16 ItemsSlotsAlpha[8] = { HARKINIANPAD_TOUCH_ALPHA(interfaceCtx->bAlpha),
+                               HARKINIANPAD_TOUCH_ALPHA(interfaceCtx->cLeftAlpha),
+                               HARKINIANPAD_TOUCH_ALPHA(interfaceCtx->cRightAlpha),
+                               HARKINIANPAD_TOUCH_ALPHA(interfaceCtx->cDownAlpha),
+                               interfaceCtx->dpadUpAlpha,
+                               interfaceCtx->dpadDownAlpha,
+                               interfaceCtx->dpadLeftAlpha,
+                               interfaceCtx->dpadRightAlpha };
     s16 DPad_ItemsOffset[4][2] = {
         { 7, -8 },         // Up
         { 7, 24 },         // Down
@@ -4640,13 +4740,37 @@ void Interface_DrawItemIconTexture(PlayState* play, void* texture, s16 button) {
         ItemIconPos[3][1] = ItemIconPos_ori[3][1];
     }
 
+    s16 nativeHudItemWidth = gItemIconWidth[button];
+    s16 nativeHudItemDD = gItemIconDD[button];
+#ifdef __IOS__
+    static const s16 nativeHudButtons[] = {
+        HARKINIANPAD_HUD_BUTTON_B,
+        HARKINIANPAD_HUD_BUTTON_C_LEFT,
+        HARKINIANPAD_HUD_BUTTON_C_DOWN,
+        HARKINIANPAD_HUD_BUTTON_C_RIGHT,
+    };
+    if (button >= 0 && button < 4) {
+        float nativeHudX;
+        float nativeHudY;
+        if (HarkinianPad_GetNativeHudButtonCenter(nativeHudButtons[button], OTRGetAspectRatio(), &nativeHudX,
+                                                   &nativeHudY)) {
+            const float nativeHudScale =
+                HarkinianPad_GetNativeHudButtonScale(nativeHudButtons[button], OTRGetAspectRatio());
+            nativeHudItemWidth = MAX(1, gItemIconWidth[button] * nativeHudScale);
+            nativeHudItemDD = (1 << 9) * 32 / nativeHudItemWidth;
+            ItemIconPos[button][0] = nativeHudX - nativeHudItemWidth * 0.5f;
+            ItemIconPos[button][1] = nativeHudY - nativeHudItemWidth * 0.5f;
+        }
+    }
+#endif
+
     gDPLoadTextureBlock(OVERLAY_DISP++, texture, G_IM_FMT_RGBA, G_IM_SIZ_32b, 32, 32, 0, G_TX_NOMIRROR | G_TX_WRAP,
                         G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMASK, G_TX_NOMASK, G_TX_NOLOD, G_TX_NOLOD);
 
     gSPWideTextureRectangle(OVERLAY_DISP++, ItemIconPos[button][0] << 2, ItemIconPos[button][1] << 2,
-                            (ItemIconPos[button][0] + gItemIconWidth[button]) << 2,
-                            (ItemIconPos[button][1] + gItemIconWidth[button]) << 2, G_TX_RENDERTILE, 0, 0,
-                            gItemIconDD[button] << 1, gItemIconDD[button] << 1);
+                            (ItemIconPos[button][0] + nativeHudItemWidth) << 2,
+                            (ItemIconPos[button][1] + nativeHudItemWidth) << 2, G_TX_RENDERTILE, 0, 0,
+                            nativeHudItemDD << 1, nativeHudItemDD << 1);
 
     CLOSE_DISPS(play->state.gfxCtx);
 }
@@ -4889,6 +5013,28 @@ void Interface_DrawAmmoCount(PlayState* play, s16 button, s16 alpha) {
         ItemIconPos[3][1] = ItemIconPos_ori[3][1];
     }
 
+#ifdef __IOS__
+    static const s16 nativeHudButtons[] = {
+        HARKINIANPAD_HUD_BUTTON_B,
+        HARKINIANPAD_HUD_BUTTON_C_LEFT,
+        HARKINIANPAD_HUD_BUTTON_C_DOWN,
+        HARKINIANPAD_HUD_BUTTON_C_RIGHT,
+    };
+    static const s16 nativeButtonSizes[] = { 30, 27, 27, 27 };
+    if (button >= 0 && button < 4) {
+        float nativeHudX;
+        float nativeHudY;
+        if (HarkinianPad_GetNativeHudButtonCenter(nativeHudButtons[button], OTRGetAspectRatio(), &nativeHudX,
+                                                   &nativeHudY)) {
+            const float nativeHudScale =
+                HarkinianPad_GetNativeHudButtonScale(nativeHudButtons[button], OTRGetAspectRatio());
+            const float nativeButtonSize = nativeButtonSizes[button] * nativeHudScale;
+            ItemIconPos[button][0] = nativeHudX - nativeButtonSize * 0.5f + 1;
+            ItemIconPos[button][1] = nativeHudY - nativeButtonSize * 0.5f + MAX(12.0f, 17.0f * nativeHudScale);
+        }
+    }
+#endif
+
     OPEN_DISPS(play->state.gfxCtx);
 
     i = gSaveContext.equips.buttonItems[button];
@@ -4946,11 +5092,16 @@ void Interface_DrawAmmoCount(PlayState* play, s16 button, s16 alpha) {
 
 void Interface_DrawActionButton(PlayState* play, f32 x, f32 y) {
     InterfaceContext* interfaceCtx = &play->interfaceCtx;
+    float nativeHudButtonScale = 1.0f;
+#ifdef __IOS__
+    nativeHudButtonScale =
+        HarkinianPad_GetNativeHudButtonScale(HARKINIANPAD_HUD_BUTTON_A, OTRGetAspectRatio());
+#endif
 
     OPEN_DISPS(play->state.gfxCtx);
 
     Matrix_Translate(-137.0f + x, 97.0f - y, XREG(18) / 10.0f, MTXMODE_NEW);
-    Matrix_Scale(1.0f, 1.0f, 1.0f, MTXMODE_APPLY);
+    Matrix_Scale(nativeHudButtonScale, nativeHudButtonScale, nativeHudButtonScale, MTXMODE_APPLY);
     Matrix_RotateX(interfaceCtx->unk_1F4 / 10000.0f, MTXMODE_APPLY);
 
     gSPMatrix(OVERLAY_DISP++, MATRIX_NEWMTX(play->state.gfxCtx), G_MTX_MODELVIEW | G_MTX_LOAD);
@@ -5142,6 +5293,10 @@ void Interface_Draw(PlayState* play) {
     s16 svar5;
     s16 timerId;
     bool fullUi = !CVarGetInteger(CVAR_ENHANCEMENT("MinimalUI"), 0) || !R_MINIMAP_DISABLED || play->pauseCtx.state != 0;
+#ifdef __IOS__
+    HarkinianPad_SetNativeHudTouchGameplayActive(gSaveContext.gameMode == GAMEMODE_NORMAL && fullUi &&
+                                                  pauseCtx->state == 0 && pauseCtx->debugState == 0);
+#endif
     // #region SOH [NTSC]
     s32 languageOffset = gSaveContext.language;
 
@@ -5437,7 +5592,8 @@ void Interface_Draw(PlayState* play) {
         }
 
         gDPPipeSync(OVERLAY_DISP++);
-        gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 255, 255, 255, interfaceCtx->bAlpha);
+        gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 255, 255, 255,
+                        HARKINIANPAD_TOUCH_ALPHA(interfaceCtx->bAlpha));
         gDPSetCombineMode(OVERLAY_DISP++, G_CC_MODULATERGBA_PRIM, G_CC_MODULATERGBA_PRIM);
 
         if (!(interfaceCtx->unk_1FA)) {
@@ -5457,7 +5613,7 @@ void Interface_Draw(PlayState* play) {
                     gDPPipeSync(OVERLAY_DISP++);
                     gDPSetCombineLERP(OVERLAY_DISP++, PRIMITIVE, ENVIRONMENT, TEXEL0, ENVIRONMENT, TEXEL0, 0, PRIMITIVE,
                                       0, PRIMITIVE, ENVIRONMENT, TEXEL0, ENVIRONMENT, TEXEL0, 0, PRIMITIVE, 0);
-                    Interface_DrawAmmoCount(play, 0, interfaceCtx->bAlpha);
+                    Interface_DrawAmmoCount(play, 0, HARKINIANPAD_TOUCH_ALPHA(interfaceCtx->bAlpha));
                 }
             }
         } else {
@@ -5511,10 +5667,20 @@ void Interface_Draw(PlayState* play) {
                 BbtnPosX = OTRGetRectDimensionFromRightEdge(R_B_LABEL_X(languageOffset) + X_Margins_BtnB_label);
                 BbtnPosY = R_B_LABEL_Y(languageOffset) + Y_Margins_BtnB_label;
             }
+#ifdef __IOS__
+            float nativeHudX;
+            float nativeHudY;
+            if (HarkinianPad_GetNativeHudButtonCenter(HARKINIANPAD_HUD_BUTTON_B, OTRGetAspectRatio(), &nativeHudX,
+                                                       &nativeHudY)) {
+                BbtnPosX = nativeHudX - 15 + PosX_adjust;
+                BbtnPosY = nativeHudY - 15 + PosY_adjust;
+            }
+#endif
             gDPPipeSync(OVERLAY_DISP++);
             gDPSetCombineLERP(OVERLAY_DISP++, PRIMITIVE, ENVIRONMENT, TEXEL0, ENVIRONMENT, TEXEL0, 0, PRIMITIVE, 0,
                               PRIMITIVE, ENVIRONMENT, TEXEL0, ENVIRONMENT, TEXEL0, 0, PRIMITIVE, 0);
-            gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 255, 255, 255, interfaceCtx->bAlpha);
+            gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 255, 255, 255,
+                            HARKINIANPAD_TOUCH_ALPHA(interfaceCtx->bAlpha));
 
             gDPLoadTextureBlock_4b(OVERLAY_DISP++, interfaceCtx->doActionSegment[1], G_IM_FMT_IA, DO_ACTION_TEX_WIDTH(),
                                    DO_ACTION_TEX_HEIGHT(), 0, G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMIRROR | G_TX_WRAP,
@@ -5530,39 +5696,42 @@ void Interface_Draw(PlayState* play) {
 
         // C-Left Button Icon & Ammo Count
         if (gSaveContext.equips.buttonItems[1] < 0xF0) {
-            gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 255, 255, 255, interfaceCtx->cLeftAlpha);
+            gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 255, 255, 255,
+                            HARKINIANPAD_TOUCH_ALPHA(interfaceCtx->cLeftAlpha));
             gDPSetCombineMode(OVERLAY_DISP++, G_CC_MODULATERGBA_PRIM, G_CC_MODULATERGBA_PRIM);
             Interface_DrawItemIconTexture(play, gItemIcons[gSaveContext.equips.buttonItems[1]], 1);
             gDPPipeSync(OVERLAY_DISP++);
             gDPSetCombineLERP(OVERLAY_DISP++, PRIMITIVE, ENVIRONMENT, TEXEL0, ENVIRONMENT, TEXEL0, 0, PRIMITIVE, 0,
                               PRIMITIVE, ENVIRONMENT, TEXEL0, ENVIRONMENT, TEXEL0, 0, PRIMITIVE, 0);
-            Interface_DrawAmmoCount(play, 1, interfaceCtx->cLeftAlpha);
+            Interface_DrawAmmoCount(play, 1, HARKINIANPAD_TOUCH_ALPHA(interfaceCtx->cLeftAlpha));
         }
 
         gDPPipeSync(OVERLAY_DISP++);
 
         // C-Down Button Icon & Ammo Count
         if (gSaveContext.equips.buttonItems[2] < 0xF0) {
-            gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 255, 255, 255, interfaceCtx->cDownAlpha);
+            gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 255, 255, 255,
+                            HARKINIANPAD_TOUCH_ALPHA(interfaceCtx->cDownAlpha));
             gDPSetCombineMode(OVERLAY_DISP++, G_CC_MODULATERGBA_PRIM, G_CC_MODULATERGBA_PRIM);
             Interface_DrawItemIconTexture(play, gItemIcons[gSaveContext.equips.buttonItems[2]], 2);
             gDPPipeSync(OVERLAY_DISP++);
             gDPSetCombineLERP(OVERLAY_DISP++, PRIMITIVE, ENVIRONMENT, TEXEL0, ENVIRONMENT, TEXEL0, 0, PRIMITIVE, 0,
                               PRIMITIVE, ENVIRONMENT, TEXEL0, ENVIRONMENT, TEXEL0, 0, PRIMITIVE, 0);
-            Interface_DrawAmmoCount(play, 2, interfaceCtx->cDownAlpha);
+            Interface_DrawAmmoCount(play, 2, HARKINIANPAD_TOUCH_ALPHA(interfaceCtx->cDownAlpha));
         }
 
         gDPPipeSync(OVERLAY_DISP++);
 
         // C-Right Button Icon & Ammo Count
         if (gSaveContext.equips.buttonItems[3] < 0xF0) {
-            gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 255, 255, 255, interfaceCtx->cRightAlpha);
+            gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 255, 255, 255,
+                            HARKINIANPAD_TOUCH_ALPHA(interfaceCtx->cRightAlpha));
             gDPSetCombineMode(OVERLAY_DISP++, G_CC_MODULATERGBA_PRIM, G_CC_MODULATERGBA_PRIM);
             Interface_DrawItemIconTexture(play, gItemIcons[gSaveContext.equips.buttonItems[3]], 3);
             gDPPipeSync(OVERLAY_DISP++);
             gDPSetCombineLERP(OVERLAY_DISP++, PRIMITIVE, ENVIRONMENT, TEXEL0, ENVIRONMENT, TEXEL0, 0, PRIMITIVE, 0,
                               PRIMITIVE, ENVIRONMENT, TEXEL0, ENVIRONMENT, TEXEL0, 0, PRIMITIVE, 0);
-            Interface_DrawAmmoCount(play, 3, interfaceCtx->cRightAlpha);
+            Interface_DrawAmmoCount(play, 3, HARKINIANPAD_TOUCH_ALPHA(interfaceCtx->cRightAlpha));
         }
 
         if (CVarGetInteger(CVAR_ENHANCEMENT("DpadEquips"), 0) != 0) {
@@ -5716,9 +5885,28 @@ void Interface_Draw(PlayState* play) {
             rAIconY = rAIconY_ori;
             rAIconX = rAIconX_ori;
         }
+        float nativeHudButtonScale = 1.0f;
+#ifdef __IOS__
+        float nativeHudX;
+        float nativeHudY;
+        if (HarkinianPad_GetNativeHudButtonCenter(HARKINIANPAD_HUD_BUTTON_A, OTRGetAspectRatio(), &nativeHudX,
+                                                   &nativeHudY)) {
+            nativeHudButtonScale =
+                HarkinianPad_GetNativeHudButtonScale(HARKINIANPAD_HUD_BUTTON_A, OTRGetAspectRatio());
+            // Interface_DrawActionButton's legacy coordinate path places the
+            // centered action quad 23 points beyond PosX/PosY. Compensate for
+            // that fixed offset rather than treating PosX/PosY as the
+            // texture's scaled top-left corner.
+            PosX_BtnA = nativeHudX - 23.0f;
+            PosY_BtnA = nativeHudY - 23.0f;
+            rAIconX = PosX_BtnA;
+            rAIconY = 98.0f - PosY_BtnA;
+        }
+#endif
         gSPClearGeometryMode(OVERLAY_DISP++, G_CULL_BOTH);
         gDPSetCombineMode(OVERLAY_DISP++, G_CC_MODULATEIA_PRIM, G_CC_MODULATEIA_PRIM);
-        gDPSetPrimColor(OVERLAY_DISP++, 0, 0, aButtonColor.r, aButtonColor.g, aButtonColor.b, interfaceCtx->aAlpha);
+        gDPSetPrimColor(OVERLAY_DISP++, 0, 0, aButtonColor.r, aButtonColor.g, aButtonColor.b,
+                        HARKINIANPAD_TOUCH_ALPHA(interfaceCtx->aAlpha));
         if (fullUi) {
             Interface_DrawActionButton(play, PosX_BtnA, PosY_BtnA);
         }
@@ -5726,10 +5914,11 @@ void Interface_Draw(PlayState* play) {
         gSPSetGeometryMode(OVERLAY_DISP++, G_CULL_BACK);
         gDPSetCombineLERP(OVERLAY_DISP++, PRIMITIVE, ENVIRONMENT, TEXEL0, ENVIRONMENT, TEXEL0, 0, PRIMITIVE, 0,
                           PRIMITIVE, ENVIRONMENT, TEXEL0, ENVIRONMENT, TEXEL0, 0, PRIMITIVE, 0);
-        gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 255, 255, 255, interfaceCtx->aAlpha);
+        gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 255, 255, 255,
+                        HARKINIANPAD_TOUCH_ALPHA(interfaceCtx->aAlpha));
         gDPSetEnvColor(OVERLAY_DISP++, 0, 0, 0, 0);
         Matrix_Translate(-138.0f + rAIconX, rAIconY, WREG(46 + languageOffset) / 10.0f, MTXMODE_NEW);
-        Matrix_Scale(1.0f, 1.0f, 1.0f, MTXMODE_APPLY);
+        Matrix_Scale(nativeHudButtonScale, nativeHudButtonScale, nativeHudButtonScale, MTXMODE_APPLY);
         Matrix_RotateX(interfaceCtx->unk_1F4 / 10000.0f, MTXMODE_APPLY);
         gSPMatrix(OVERLAY_DISP++, MATRIX_NEWMTX(play->state.gfxCtx), G_MTX_MODELVIEW | G_MTX_LOAD);
         gSPVertex(OVERLAY_DISP++, &interfaceCtx->actionVtx[4], 4, 0);

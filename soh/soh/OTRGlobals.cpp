@@ -63,6 +63,9 @@
 
 #ifdef __APPLE__
 #include <SDL_scancode.h>
+#ifdef __IOS__
+#include <SDL_video.h>
+#endif
 #else
 #include <SDL2/SDL_scancode.h>
 #endif
@@ -81,9 +84,11 @@
 #include "soh/SohGui/ImGuiUtils.h"
 #include "ActorDB.h"
 #include "SaveManager.h"
+#ifndef SOH_DISABLE_NETWORKING
 #include "soh/Network/CrowdControl/CrowdControl.h"
 #include "soh/Network/Sail/Sail.h"
 #include "soh/Network/Anchor/Anchor.h"
+#endif
 #include "Enhancements/game-interactor/GameInteractor.h"
 #include "Enhancements/randomizer/draw.h"
 #include <libultraship/controller/controldeck/ControlDeck.h>
@@ -129,6 +134,26 @@ const uint32_t defaultImGuiScale = 1;
 
 const float imguiScaleOptionToValue[4] = { 0.75f, 1.0f, 1.5f, 2.0f };
 
+#ifdef __IOS__
+static bool IsIOSCompactDisplay() {
+    SDL_Rect displayBounds = {};
+    if (SDL_GetDisplayUsableBounds(0, &displayBounds) != 0) {
+        return false;
+    }
+    const int shortestSide = displayBounds.w < displayBounds.h ? displayBounds.w : displayBounds.h;
+    return shortestSide < 600;
+}
+#endif
+
+static uint32_t GetDefaultImGuiScale() {
+#ifdef __IOS__
+    if (IsIOSCompactDisplay()) {
+        return 0;
+    }
+#endif
+    return defaultImGuiScale;
+}
+
 bool SoH_HandleConfigDrop(char* filePath);
 
 OTRGlobals* OTRGlobals::Instance;
@@ -138,9 +163,11 @@ ItemTableManager* ItemTableManager::Instance;
 GameInteractor* GameInteractor::Instance;
 AudioCollection* AudioCollection::Instance;
 SpeechSynthesizer* SpeechSynthesizer::Instance;
+#ifndef SOH_DISABLE_NETWORKING
 CrowdControl* CrowdControl::Instance;
 Sail* Sail::Instance;
 Anchor* Anchor::Instance;
+#endif
 
 extern "C" char** cameraStrings;
 
@@ -330,7 +357,11 @@ OTRGlobals::OTRGlobals() {
     }
 
     previousImGuiScaleIndex = -1;
+#ifdef __IOS__
+    previousImGuiScale = 1.0f;
+#else
     previousImGuiScale = defaultImGuiScale;
+#endif
     ScaleImGui();
 }
 
@@ -567,6 +598,21 @@ void OTRGlobals::RunExtract(int argc, char* argv[]) {
             case ES_EXTRACT_ARGS: {
 #if !defined(__SWITCH__) && !defined(__WIIU__)
                 if (args.empty()) {
+#ifdef __IOS__
+                    SohGui::RegisterPopup(
+                        "Run Ship of Harkinian", "All files have been processed.", "Run Ship of Harkinian", "",
+                        [&]() {
+                            if (!std::filesystem::exists(Ship::Context::GetAppDirectoryPath(appShortName) +
+                                                         "/oot.o2r") &&
+                                !std::filesystem::exists(Ship::Context::GetAppDirectoryPath(appShortName) +
+                                                         "/oot-mq.o2r")) {
+                                extractStep = ES_EXTRACT;
+                                promptStep = PS_FILE_CHECK;
+                            } else {
+                                extractStep = ES_VERIFY;
+                            }
+                        });
+#else
                     SohGui::RegisterPopup(
                         "Run Ship of Harkinian", "All files have been processed. Run SoH?", "Yes", "No",
                         [&]() {
@@ -581,6 +627,7 @@ void OTRGlobals::RunExtract(int argc, char* argv[]) {
                             }
                         },
                         [&]() { exit(0); });
+#endif
                     break;
                 }
                 file = args.at(0);
@@ -624,9 +671,16 @@ void OTRGlobals::RunExtract(int argc, char* argv[]) {
                             std::filesystem::exists(Ship::Context::LocateFileAcrossAppDirs("oot.o2r", appShortName));
 
                         if (!ootO2RExists) {
+#ifdef __IOS__
+                            SohGui::RegisterPopup(
+                                "No O2R Files",
+                                "No O2R files found. Import a supported ROM with Files to generate one.", "Continue",
+                                "", [&]() { promptStep = PS_LOCAL; });
+#else
                             SohGui::RegisterPopup(
                                 "No O2R Files", "No O2R files found. Generate one now?", "Yes", "No",
                                 [&]() { promptStep = PS_LOCAL; }, [&]() { exit(0); });
+#endif
                         } else {
                             extractStep = ES_VERIFY;
                         }
@@ -650,6 +704,17 @@ void OTRGlobals::RunExtract(int argc, char* argv[]) {
                         continue;
                     }
                     case PS_FIRST: {
+#ifdef __IOS__
+                        promptStep = PS_WAIT;
+                        const char* filesLocation = IsIOSCompactDisplay() ? "On My iPhone" : "On My iPad";
+                        const std::string message =
+                            "Open Files and copy your legally acquired .z64, .n64, or .v64 ROM into\n" +
+                            std::string(filesLocation) + " > HarkinianPad (its Documents folder).\n" +
+                            "LiveContainer: use this app's Documents folder, not SystemData.\n" +
+                            "Leave HarkinianPad open, then return here and choose Rescan.";
+                        SohGui::RegisterPopup(
+                            "Import ROM in Files", message, "Rescan", "", [&]() { promptStep = PS_LOCAL; });
+#else
                         if (!extract.ManuallySearchForRomMatchingType(RomSearchMode::Both)) {
                             promptStep = PS_FILE_CHECK;
                             continue;
@@ -662,6 +727,7 @@ void OTRGlobals::RunExtract(int argc, char* argv[]) {
                             extractCount = 0;
                             totalExtract = 0;
                         });
+#endif
                         continue;
                     }
                     case PS_SECOND: {
@@ -695,9 +761,19 @@ void OTRGlobals::RunExtract(int argc, char* argv[]) {
                     std::filesystem::exists(Ship::Context::LocateFileAcrossAppDirs("oot.o2r", appShortName));
 
                 if (!ootO2RExists) {
+#ifdef __IOS__
+                    SohGui::RegisterPopup(
+                        "No ROM Archives", "No ROM O2R files detected. Import a supported ROM with Files.", "Try Again",
+                        "", [&]() {
+                            extractStep = ES_EXTRACT;
+                            promptStep = PS_LOCAL;
+                        });
+                    continue;
+#else
                     SohGui::RegisterPopup("No ROM Archives",
                                           "No ROM O2R files detected. Please generate a ROM O2R and relaunch.", "OK",
                                           "", [&]() { exit(0); });
+#endif
                 }
                 extractDone = true;
                 continue;
@@ -730,7 +806,14 @@ void OTRGlobals::RunExtract(int argc, char* argv[]) {
                 try {
                     extractionTask->get();
                 } catch (const std::exception& e) {
+#ifdef __IOS__
+                    SohGui::RegisterPopup("Extraction Failed", e.what(), "Try Again", "", [&]() {
+                        extractStep = ES_EXTRACT;
+                        promptStep = PS_LOCAL;
+                    });
+#else
                     SohGui::RegisterPopup("Extraction Crashed", e.what(), "Close", "", []() { exit(1); });
+#endif
                 }
                 extractionTask.reset();
             } else {
@@ -980,7 +1063,7 @@ OTRGlobals::~OTRGlobals() {
 }
 
 void OTRGlobals::ScaleImGui() {
-    int32_t imGuiScaleIndex = CVarGetInteger(CVAR_SETTING("ImGuiScale"), defaultImGuiScale);
+    int32_t imGuiScaleIndex = CVarGetInteger(CVAR_SETTING("ImGuiScale"), GetDefaultImGuiScale());
     if (imGuiScaleIndex == previousImGuiScaleIndex) {
         return;
     }
@@ -1560,9 +1643,11 @@ extern "C" void InitOTR(int argc, char* argv[]) {
 #endif
     SpeechSynthesizer::Instance->Init();
 
+#ifndef SOH_DISABLE_NETWORKING
     CrowdControl::Instance = new CrowdControl();
     Sail::Instance = new Sail();
     Anchor::Instance = new Anchor();
+#endif
 
     OTRMessage_Init();
     OTRAudio_Init();
@@ -1588,6 +1673,7 @@ extern "C" void InitOTR(int argc, char* argv[]) {
     }
 
     srand(static_cast<unsigned int>(now));
+#ifndef SOH_DISABLE_NETWORKING
     SDLNet_Init();
     if (CVarGetInteger(CVAR_REMOTE_CROWD_CONTROL("Enabled"), 0)) {
         CrowdControl::Instance->Enable();
@@ -1598,6 +1684,7 @@ extern "C" void InitOTR(int argc, char* argv[]) {
     if (CVarGetInteger(CVAR_REMOTE_ANCHOR("Enabled"), 0)) {
         Anchor::Instance->Enable();
     }
+#endif
     ShipInit::InitAll();
     Rando::StaticData::InitHashMaps();
     OTRGlobals::Instance->gRandoContext->AddExcludedOptions();
@@ -1610,6 +1697,7 @@ extern "C" void SaveManager_ThreadPoolWait() {
 extern "C" void DeinitOTR() {
     SaveManager_ThreadPoolWait();
     OTRAudio_Exit();
+#ifndef SOH_DISABLE_NETWORKING
     if (CVarGetInteger(CVAR_REMOTE_CROWD_CONTROL("Enabled"), 0)) {
         CrowdControl::Instance->Disable();
     }
@@ -1620,6 +1708,7 @@ extern "C" void DeinitOTR() {
         Anchor::Instance->Disable();
     }
     SDLNet_Quit();
+#endif
 
     // Destroying gui here because we have shared ptrs to LUS objects which output to SPDLOG which is destroyed before
     // these shared ptrs.

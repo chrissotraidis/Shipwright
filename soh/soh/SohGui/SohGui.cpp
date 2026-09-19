@@ -22,7 +22,9 @@
 #include "soh/Notification/Notification.h"
 #include "soh/Enhancements/TimeDisplay/TimeDisplay.h"
 #include "soh/Enhancements/mod_menu.h"
+#ifndef SOH_DISABLE_NETWORKING
 #include "soh/Network/Anchor/Anchor.h"
+#endif
 
 namespace SohGui {
 
@@ -36,7 +38,7 @@ static const inline std::vector<std::pair<const char*, const char*>> audioBacken
 #if defined(__linux)
     { "pulse", "PulseAudio" },
 #endif
-#ifdef __APPLE__
+#if defined(__APPLE__) && !defined(__IOS__)
     { "coreaudio", "Core Audio" },
 #endif
     { "sdl", "SDL Audio" }
@@ -89,7 +91,9 @@ std::shared_ptr<PlandomizerWindow> mPlandomizerWindow;
 std::shared_ptr<SohModalWindow> mModalWindow;
 std::shared_ptr<Notification::Window> mNotificationWindow;
 std::shared_ptr<TimeDisplayWindow> mTimeDisplayWindow;
+#ifndef SOH_DISABLE_NETWORKING
 std::shared_ptr<AnchorRoomWindow> mAnchorRoomWindow;
+#endif
 
 UIWidgets::Colors GetMenuThemeColor() {
     return mSohMenu->GetMenuThemeColor();
@@ -200,8 +204,10 @@ void SetupGuiElements() {
     mNotificationWindow->Show();
     mTimeDisplayWindow = std::make_shared<TimeDisplayWindow>(CVAR_WINDOW("TimeDisplayEnabled"), "Additional Timers");
     gui->AddGuiWindow(mTimeDisplayWindow);
+#ifndef SOH_DISABLE_NETWORKING
     mAnchorRoomWindow = std::make_shared<AnchorRoomWindow>(CVAR_WINDOW("AnchorRoom"), "Anchor Room");
     gui->AddGuiWindow(mAnchorRoomWindow);
+#endif
 }
 
 void Destroy() {
@@ -237,7 +243,9 @@ void Destroy() {
     mTimeSplitWindow = nullptr;
     mPlandomizerWindow = nullptr;
     mTimeDisplayWindow = nullptr;
+#ifndef SOH_DISABLE_NETWORKING
     mAnchorRoomWindow = nullptr;
+#endif
 }
 
 void RegisterPopup(std::string title, std::string message, std::string button1, std::string button2,

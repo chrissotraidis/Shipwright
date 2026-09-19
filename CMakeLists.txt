@@ -1,6 +1,14 @@
 cmake_minimum_required(VERSION 3.26.0 FATAL_ERROR)
 
-set(CMAKE_SYSTEM_VERSION 10.0 CACHE STRING "" FORCE)
+if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    set(CMAKE_SYSTEM_VERSION "${DEPLOYMENT_TARGET}" CACHE STRING "" FORCE)
+    if(PLATFORM STREQUAL "SIMULATORARM64")
+        set(CMAKE_OSX_SYSROOT "iphonesimulator" CACHE STRING "" FORCE)
+        set(CMAKE_OSX_ARCHITECTURES "arm64" CACHE STRING "" FORCE)
+    endif()
+else()
+    set(CMAKE_SYSTEM_VERSION 10.0 CACHE STRING "" FORCE)
+endif()
 set(CMAKE_CXX_STANDARD 20 CACHE STRING "The C++ standard to use")
 set(CMAKE_C_STANDARD 23 CACHE STRING "The C standard to use")
 
@@ -182,6 +190,11 @@ set(GFX_DEBUG_DISASSEMBLER ON)
 set(GBI_UCODE F3DEX_GBI_2)
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/CMake")
 
+# Dependencies that are not provided by the iOS SDK.
+if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    include(CMake/ios.cmake)
+endif()
+
 # Enable MPQ and OTR support
 set(INCLUDE_MPQ_SUPPORT ON)
 
@@ -198,6 +211,12 @@ target_compile_options(libultraship PRIVATE "${WARNING_OVERRIDE}")
 target_compile_definitions(libultraship PUBLIC INCLUDE_MPQ_SUPPORT)
 add_subdirectory(ZAPDTR/ZAPD ${CMAKE_BINARY_DIR}/ZAPD)
 add_subdirectory(OTRExporter)
+if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    target_link_libraries(OTRExporter PUBLIC
+        tinyxml2::tinyxml2
+        libzip::zip
+    )
+endif()
 add_subdirectory(soh)
 
 set_property(TARGET soh PROPERTY APPIMAGE_DESKTOP_FILE_TERMINAL YES)

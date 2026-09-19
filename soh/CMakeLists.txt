@@ -1,12 +1,16 @@
 cmake_minimum_required(VERSION 3.26.0 FATAL_ERROR)
 
-set(CMAKE_SYSTEM_VERSION 10.0 CACHE STRING "" FORCE)
+if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    set(CMAKE_SYSTEM_VERSION "${DEPLOYMENT_TARGET}" CACHE STRING "" FORCE)
+else()
+    set(CMAKE_SYSTEM_VERSION 10.0 CACHE STRING "" FORCE)
+endif()
 
 project(soh LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 20 CACHE STRING "The C++ standard to use")
 set(CMAKE_C_STANDARD 23 CACHE STRING "The C standard to use")
 
-if (CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+if (CMAKE_SYSTEM_NAME MATCHES "Darwin|iOS")
     enable_language(OBJCXX)
     set(CMAKE_OBJC_FLAGS "${CMAKE_OBJC_FLAGS} -fobjc-arc")
     set(CMAKE_OBJCXX_FLAGS "${CMAKE_OBJCXX_FLAGS} -fobjc-arc")
@@ -137,6 +141,12 @@ file(GLOB_RECURSE soh__ RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} "soh/*.c" "soh/*.cp
 # Add specific files that don't match the pattern
 list(APPEND soh__ ${CMAKE_CURRENT_SOURCE_DIR}/soh/Enhancements/speechsynthesizer/DarwinSpeechSynthesizer.mm)
 
+if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    list(FILTER soh__ EXCLUDE REGEX "^soh/Network/")
+    list(FILTER soh__ EXCLUDE REGEX "^soh/SohGui/SohMenuNetwork\\.cpp$")
+    list(APPEND soh__ ${CMAKE_CURRENT_SOURCE_DIR}/ios/HarkinianPadTouchControls.mm)
+endif()
+
 # Create source groups that match the real file directory paths
 foreach(source IN LISTS soh__)
     get_filename_component(source_path "${source}" PATH)
@@ -155,7 +165,7 @@ endif()
 # handle speechsynthesizer removals
 if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
     list(FILTER soh__ EXCLUDE REGEX "soh/Enhancements/speechsynthesizer/Darwin")
-elseif (CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+elseif (CMAKE_SYSTEM_NAME MATCHES "Darwin|iOS")
     list(FILTER soh__ EXCLUDE REGEX "soh/Enhancements/speechsynthesizer/SAPI")
 else()
     list(FILTER soh__ EXCLUDE REGEX "soh/Enhancements/speechsynthesizer/(Darwin|SAPI)")
@@ -254,6 +264,23 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
         XCODE_ATTRIBUTE_CLANG_ENABLE_OBJC_ARC YES
         OUTPUT_NAME "soh-macos"
     )
+elseif(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    set(HARKINIANPAD_ASSET_CATALOG
+        "${CMAKE_CURRENT_SOURCE_DIR}/ios/Assets.xcassets")
+    target_sources(${PROJECT_NAME} PRIVATE "${HARKINIANPAD_ASSET_CATALOG}")
+    set_source_files_properties("${HARKINIANPAD_ASSET_CATALOG}" PROPERTIES
+        MACOSX_PACKAGE_LOCATION Resources
+    )
+    set_target_properties(${PROJECT_NAME} PROPERTIES
+        MACOSX_BUNDLE TRUE
+        MACOSX_BUNDLE_GUI_IDENTIFIER "${BUNDLE_ID}"
+        MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/ios/Info.plist.in"
+        OUTPUT_NAME "HarkinianPad"
+        XCODE_ATTRIBUTE_ASSETCATALOG_COMPILER_APPICON_NAME "AppIcon"
+        XCODE_ATTRIBUTE_CLANG_ENABLE_OBJC_ARC YES
+        XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "${BUNDLE_ID}"
+        XCODE_ATTRIBUTE_TARGETED_DEVICE_FAMILY "1,2"
+    )
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     set_target_properties(${PROJECT_NAME} PROPERTIES
     OUTPUT_NAME "soh.elf"
@@ -302,12 +329,14 @@ FetchContent_MakeAvailable(dr_libs)
 find_package(SDL2)
 set(SDL2-INCLUDE ${SDL2_INCLUDE_DIRS})
 
-find_package(SDL2_net)
+if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    find_package(SDL2_net)
 
-if(NOT SDL2_net_FOUND)
-    message(STATUS "SDL2_net not found (it's possible the version installed is too old).")
-else()
-    set(SDL2-NET-INCLUDE ${SDL_NET_INCLUDE_DIRS})
+    if(NOT SDL2_net_FOUND)
+        message(STATUS "SDL2_net not found (it's possible the version installed is too old).")
+    else()
+        set(SDL2-NET-INCLUDE ${SDL_NET_INCLUDE_DIRS})
+    endif()
 endif()
 
 if (ESPEAK)
@@ -373,6 +402,18 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
             NOMINMAX
         )
     endif()
+elseif (CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    target_compile_definitions(${PROJECT_NAME} PRIVATE
+        "$<$<CONFIG:Debug>:_DEBUG>"
+        "$<$<CONFIG:Release>:NDEBUG>"
+        "SOH_DISABLE_NETWORKING;"
+        "__IOS__;"
+        "F3DEX_GBI_2;"
+        "_CONSOLE;"
+        "_CRT_SECURE_NO_WARNINGS;"
+        SPDLOG_ACTIVE_LEVEL=${SPDLOG_MIN_CUTOFF}
+        LOG_LEVEL_GAME_PRINTS=${SPDLOG_LEVEL_OFF}
+    )
 elseif (CMAKE_SYSTEM_NAME STREQUAL "CafeOS")
     target_compile_definitions(${PROJECT_NAME} PRIVATE
         "$<$<CONFIG:Debug>:"
@@ -482,7 +523,7 @@ if(MSVC)
 endif()
 
 if (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
-    if (CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    if (CMAKE_SYSTEM_NAME MATCHES "Darwin|iOS")
         target_compile_options(${PROJECT_NAME} PRIVATE
             -Wall -Wextra -Wno-error
             -Wformat-security
@@ -587,8 +628,10 @@ if (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
         target_link_options(${PROJECT_NAME} PRIVATE
             -pthread
                 #-fsanitize=address
-            -Wl,-export-dynamic
         )
+        if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
+            target_link_options(${PROJECT_NAME} PRIVATE -Wl,-export-dynamic)
+        endif()
     endif()
 endif()
 ################################################################################
@@ -611,6 +654,31 @@ if(NOT CMAKE_SYSTEM_NAME MATCHES "NintendoSwitch|CafeOS")
         COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different ${CMAKE_SOURCE_DIR}/soh/assets/xml $<TARGET_FILE_DIR:soh>/assets/xml
         COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:soh>/assets/symbols
     #    COMMAND ${VS_COPY_ASSETS_CMD}
+    )
+endif()
+if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/soh.o2r")
+        add_custom_command(
+            TARGET ${PROJECT_NAME}
+            POST_BUILD
+            COMMENT "Copying ROM-free port archive..."
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${CMAKE_CURRENT_SOURCE_DIR}/soh.o2r"
+                "$<TARGET_FILE_DIR:soh>/soh.o2r"
+        )
+    else()
+        message(WARNING
+            "soh.o2r is not available. Generate the ROM-free port archive "
+            "before packaging HarkinianPad."
+        )
+    endif()
+    add_custom_command(
+        TARGET ${PROJECT_NAME}
+        POST_BUILD
+        COMMENT "Copying controller mappings..."
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${CMAKE_BINARY_DIR}/gamecontrollerdb.txt"
+            "$<TARGET_FILE_DIR:soh>/gamecontrollerdb.txt"
     )
 endif()
 ################################################################################
@@ -691,6 +759,22 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "CafeOS")
     target_include_directories(${PROJECT_NAME} PRIVATE
         ${DEVKITPRO}/portlibs/wiiu/include/
     )
+elseif(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    set(THREADS_PREFER_PTHREAD_FLAG ON)
+    find_package(Threads REQUIRED)
+    set(ADDITIONAL_LIBRARY_DEPENDENCIES
+        "libultraship;"
+        "ZAPDLib;"
+        SDL2::SDL2-static
+        SDL2::SDL2main
+        Ogg::ogg
+        Vorbis::vorbis
+        Vorbis::vorbisenc
+        Vorbis::vorbisfile
+        Opus::opus
+        OpusFile::opusfile
+        Threads::Threads
+    )
 else()
     find_package(SDL2)
     set(THREADS_PREFER_PTHREAD_FLAG ON)
@@ -715,7 +799,7 @@ else()
     )
 endif()
 
-if(NOT CMAKE_SYSTEM_NAME MATCHES "Darwin|NintendoSwitch|CafeOS")
+if(NOT CMAKE_SYSTEM_NAME MATCHES "Darwin|iOS|NintendoSwitch|CafeOS")
 INSTALL(TARGETS soh DESTINATION . COMPONENT ship)
 endif()
 
@@ -725,14 +809,38 @@ INSTALL(FILES ${CMAKE_BINARY_DIR}/soh/soh.o2r DESTINATION . COMPONENT ship)
 endif()
 
 find_program(CURL NAMES curl DOC "Path to the curl program.  Used to download files.")
-execute_process(COMMAND ${CURL} -sSfL https://raw.githubusercontent.com/mdqinc/SDL_GameControllerDB/master/gamecontrollerdb.txt -o ${CMAKE_BINARY_DIR}/gamecontrollerdb.txt OUTPUT_VARIABLE RESULT)
+if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    set(CONTROLLER_DB_COMMIT "03d390c37b1342fcb7d8d294cd9621ab9d640bb3")
+    set(CONTROLLER_DB_SHA256 "eb002773dc8a16aa96f9ee2609798e231a9deb60c45e21fbdd4e221c9e8b7d77")
+    set(CONTROLLER_DB_URL
+        "https://raw.githubusercontent.com/mdqinc/SDL_GameControllerDB/${CONTROLLER_DB_COMMIT}/gamecontrollerdb.txt"
+    )
+else()
+    set(CONTROLLER_DB_URL
+        "https://raw.githubusercontent.com/mdqinc/SDL_GameControllerDB/master/gamecontrollerdb.txt"
+    )
+endif()
+execute_process(
+    COMMAND ${CURL} -sSfL ${CONTROLLER_DB_URL}
+        -o ${CMAKE_BINARY_DIR}/gamecontrollerdb.txt
+    RESULT_VARIABLE CONTROLLER_DB_RESULT
+)
+if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    if(NOT CONTROLLER_DB_RESULT EQUAL 0)
+        message(FATAL_ERROR "Failed to download pinned controller mappings")
+    endif()
+    file(SHA256 ${CMAKE_BINARY_DIR}/gamecontrollerdb.txt CONTROLLER_DB_ACTUAL_SHA256)
+    if(NOT CONTROLLER_DB_ACTUAL_SHA256 STREQUAL CONTROLLER_DB_SHA256)
+        message(FATAL_ERROR "Pinned controller mapping checksum mismatch")
+    endif()
+endif()
 
 if("${CMAKE_SYSTEM_NAME}" STREQUAL "Darwin")
 configure_file( ${CMAKE_CURRENT_SOURCE_DIR}/macosx/Info.plist.in ${CMAKE_BINARY_DIR}/macosx/Info.plist @ONLY)
 INSTALL(TARGETS soh DESTINATION ../MacOS COMPONENT ship)
 INSTALL(FILES ${CMAKE_BINARY_DIR}/gamecontrollerdb.txt DESTINATION ../MacOS COMPONENT ship)
 INSTALL(FILES ${CMAKE_BINARY_DIR}/soh/soh.o2r DESTINATION ../Resources COMPONENT ship)
-elseif(NOT "${CMAKE_SYSTEM_NAME}" MATCHES "NintendoSwitch|CafeOS")
+elseif(NOT "${CMAKE_SYSTEM_NAME}" MATCHES "iOS|NintendoSwitch|CafeOS")
 INSTALL(FILES ${CMAKE_BINARY_DIR}/gamecontrollerdb.txt DESTINATION . COMPONENT ship)
 endif()
 

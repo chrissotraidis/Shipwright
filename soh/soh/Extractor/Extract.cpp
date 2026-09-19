@@ -244,6 +244,16 @@ void Extractor::GetRoms(std::vector<std::string>& roms) {
     // if (h != nullptr) {
     //    CloseHandle(h);
     //}
+#elif defined(__IOS__)
+    for (const auto& file : std::filesystem::directory_iterator(mSearchPath)) {
+        if (file.is_directory()) {
+            continue;
+        }
+        const auto extension = file.path().extension();
+        if (extension == ".n64" || extension == ".z64" || extension == ".v64") {
+            roms.push_back(file.path().string());
+        }
+    }
 #elif unix
     // Open the directory of the app.
     DIR* d = opendir(mSearchPath.c_str());

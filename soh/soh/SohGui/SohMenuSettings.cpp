@@ -8,6 +8,10 @@
 #include "UIWidgets.hpp"
 #include <ship/controller/controldeck/ControlDeck.h>
 
+#ifdef __IOS__
+#include "ios/HarkinianPadTouchControls.h"
+#endif
+
 extern "C" {
 #include "include/z64audio.h"
 #include "variables.h"
@@ -137,7 +141,7 @@ void SohMenu::AddMenuSettings() {
                      .Tooltip("Changes the Theme of the Menu Widgets.")
                      .ComboMap(menuThemeOptions)
                      .DefaultIndex(Colors::LightBlue));
-#if not defined(__SWITCH__) and not defined(__WIIU__)
+#if !defined(__SWITCH__) && !defined(__WIIU__) && !defined(__IOS__)
     AddWidget(path, "Menu Controller Navigation", WIDGET_CVAR_CHECKBOX)
         .CVar(CVAR_IMGUI_CONTROLLER_NAV)
         .RaceDisable(false)
@@ -332,10 +336,12 @@ void SohMenu::AddMenuSettings() {
     path.sidebarName = "Graphics";
     AddSidebarEntry("Settings", "Graphics", 3);
     AddWidget(path, "Graphics Options", WIDGET_SEPARATOR_TEXT);
+#ifndef __IOS__
     AddWidget(path, "Toggle Fullscreen", WIDGET_BUTTON)
         .RaceDisable(false)
         .Callback([](WidgetInfo& info) { Ship::Context::GetRawInstance()->GetWindow()->ToggleFullscreen(); })
         .Options(ButtonOptions().Tooltip("Toggles Fullscreen On/Off."));
+#endif
     AddWidget(path, "Internal Resolution", WIDGET_CVAR_SLIDER_FLOAT)
         .CVar(CVAR_INTERNAL_RESOLUTION)
         .RaceDisable(false)
@@ -434,6 +440,89 @@ void SohMenu::AddMenuSettings() {
     path.sidebarName = "Controls";
     path.column = SECTION_COLUMN_1;
     AddSidebarEntry("Settings", "Controls", 2);
+#ifdef __IOS__
+    AddWidget(path, "Touch Controls", WIDGET_CVAR_CHECKBOX)
+        .CVar(CVAR_SETTING("HarkinianPad.TouchControls"))
+        .RaceDisable(false)
+        .PreFunc([](WidgetInfo& info) {
+            info.isHidden = !HarkinianPad_TouchControlsAvailable();
+        })
+        .Callback([](WidgetInfo& info) {
+            HarkinianPad_SetTouchControlsEnabled(
+                CVarGetInteger(CVAR_SETTING("HarkinianPad.TouchControls"), 1));
+        })
+        .Options(CheckboxOptions()
+                     .DefaultValue(true)
+                     .Tooltip("Shows the touch controller. Disable it when using a physical controller."));
+    AddWidget(path, "Touch Control Transparency", WIDGET_CVAR_CHECKBOX)
+        .CVar(CVAR_SETTING("HarkinianPad.TouchControlTransparency"))
+        .RaceDisable(false)
+        .PreFunc([](WidgetInfo& info) {
+            info.isHidden = !HarkinianPad_TouchControlsAvailable();
+        })
+        .Callback([](WidgetInfo& info) {
+            const bool enabled =
+                CVarGetInteger(CVAR_SETTING("HarkinianPad.TouchControlTransparency"), 0);
+            HarkinianPad_SetTouchControlsOpacity(
+                enabled ? CVarGetFloat(CVAR_SETTING("HarkinianPad.TouchControlOpacity"), 0.5f) : 1.0f);
+        })
+        .Options(CheckboxOptions()
+                     .DefaultValue(false)
+                     .Tooltip("Allows the touch controls to use the opacity selected below. Input areas are "
+                              "unchanged."));
+    AddWidget(path, "Touch Control Opacity", WIDGET_CVAR_SLIDER_FLOAT)
+        .CVar(CVAR_SETTING("HarkinianPad.TouchControlOpacity"))
+        .RaceDisable(false)
+        .PreFunc([](WidgetInfo& info) {
+            info.isHidden = !HarkinianPad_TouchControlsAvailable() ||
+                            !CVarGetInteger(CVAR_SETTING("HarkinianPad.TouchControlTransparency"), 0);
+        })
+        .Callback([](WidgetInfo& info) {
+            HarkinianPad_SetTouchControlsOpacity(
+                CVarGetFloat(CVAR_SETTING("HarkinianPad.TouchControlOpacity"), 0.5f));
+        })
+        .Options(FloatSliderOptions()
+                     .IsPercentage()
+                     .Min(0.25f)
+                     .Max(1.0f)
+                     .DefaultValue(0.5f)
+                     .Tooltip("Sets touch-control opacity. Lower values show more of the game beneath them."));
+    AddWidget(path, "Legacy Fixed Touch Controls", WIDGET_CVAR_CHECKBOX)
+        .CVar(CVAR_SETTING("HarkinianPad.LegacyFixedTouchControls"))
+        .RaceDisable(false)
+        .PreFunc([](WidgetInfo& info) {
+            info.isHidden = !HarkinianPad_TouchControlsAvailable();
+        })
+        .Callback([](WidgetInfo& info) {
+            const bool modernTouchControls =
+                !CVarGetInteger(CVAR_SETTING("HarkinianPad.LegacyFixedTouchControls"), 0);
+            CVarSetInteger(CVAR_SETTING("HarkinianPad.CustomizableTouchControls"), modernTouchControls);
+            CVarSetInteger(CVAR_SETTING("HarkinianPad.NativeHudTouch"), modernTouchControls);
+            HarkinianPad_SetCustomizableTouchControlsEnabled(modernTouchControls);
+            HarkinianPad_SetNativeHudTouchEnabled(modernTouchControls);
+        })
+        .Options(CheckboxOptions()
+                     .DefaultValue(false)
+                     .Tooltip("Uses the previous fixed UIKit layout and disables customization, native HUD "
+                              "artwork, and the Z hold latch."));
+    AddWidget(path, "Customize Touch Layout", WIDGET_BUTTON)
+        .RaceDisable(false)
+        .PreFunc([](WidgetInfo& info) {
+            info.isHidden = !HarkinianPad_TouchControlsAvailable();
+            const bool available =
+                CVarGetInteger(CVAR_SETTING("HarkinianPad.TouchControls"), 1) &&
+                !CVarGetInteger(CVAR_SETTING("HarkinianPad.LegacyFixedTouchControls"), 0);
+            info.options->disabled = !available;
+            info.options->disabledTooltip =
+                "Enable Touch Controls and turn off Legacy Fixed Touch Controls first.";
+        })
+        .Callback([](WidgetInfo& info) {
+            HarkinianPad_BeginTouchLayoutEditing();
+        })
+        .Options(ButtonOptions().Tooltip(
+            "Closes Settings and opens the layout editor. Drag controls, resize the selected control, hide "
+            "unused buttons, or restore the phone or tablet defaults."));
+#endif
     AddWidget(path, "Clear Devices", WIDGET_BUTTON)
         .Callback([](WidgetInfo& info) {
             SohGui::mModalWindow->RegisterPopup(
