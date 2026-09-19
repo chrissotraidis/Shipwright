@@ -104,13 +104,17 @@ size_t Import(const fs::path& input, const fs::path& destination) {
                 const fs::path relative(entry.name);
                 if (relative.empty() || relative.is_absolute() || relative.string().find('\\') != std::string::npos)
                     throw std::runtime_error("Unsafe ZIP entry path.");
-                for (const auto& part : relative)
-                    if (part == ".." || part == ".") throw std::runtime_error("Unsafe ZIP entry path.");
-                if (!Pack(relative)) continue; // Documentation and unrelated files stay outside the app.
+                bool metadata = relative.filename().string().starts_with("._");
+                for (const auto& part : relative) {
+                    if (part == "..") throw std::runtime_error("Unsafe ZIP entry path.");
+                    if (part == "__MACOSX") metadata = true;
+                }
+                // Finder stores AppleDouble sidecars with the original pack extension.
+                if (metadata || !Pack(relative)) continue;
                 if (entry.encryption_method != ZIP_EM_NONE || entry.size > MaxBytes - total)
                     throw std::runtime_error("Encrypted or oversized ZIP content is unsupported.");
                 total += entry.size;
-                const auto output = destination / relative;
+                const auto output = destination / relative.lexically_normal();
                 fs::create_directories(output.parent_path());
                 if (fs::exists(output)) throw std::runtime_error("ZIP contains duplicate pack paths.");
                 std::unique_ptr<zip_file_t, decltype(&zip_fclose)> file(zip_fopen_index(zip.get(), i, 0), zip_fclose);
