@@ -3,6 +3,7 @@
 #include <map>
 #include <set>
 #include <vector>
+#include <spdlog/spdlog.h>
 
 #include <ship/utils/StringHelper.h>
 
@@ -201,6 +202,8 @@ bool IsValidExtension(std::string extension) {
 }
 
 void UpdateModFiles(bool init = false, bool reset = false) {
+    size_t loadedArchives = 0;
+    size_t duplicateNames = 0;
     if (init || reset) {
         enabledModFiles.clear();
         enabledModFiles = GetEnabledModsFromCVar();
@@ -230,7 +233,9 @@ void UpdateModFiles(bool init = false, bool reset = false) {
                 if (!enabled) {
                     tempMods.emplace(p.path().lexically_normal().generic_string(), filename);
                 }
-                filePaths.emplace(filename, p.path());
+                if (!filePaths.emplace(filename, p.path()).second) {
+                    ++duplicateNames;
+                }
             }
             if (tempMods.size() > 0) {
                 changed = true;
@@ -243,7 +248,9 @@ void UpdateModFiles(bool init = false, bool reset = false) {
                 std::vector<std::string> enabledTemp(enabledModFiles);
                 for (std::string mod : enabledTemp) {
                     if (filePaths.contains(mod)) {
-                        GetArchiveManager()->AddArchive(filePaths.at(mod).generic_string());
+                        if (GetArchiveManager()->AddArchive(filePaths.at(mod).generic_string())) {
+                            ++loadedArchives;
+                        }
                     } else {
                         enabledModFiles.erase(std::find(enabledModFiles.begin(), enabledModFiles.end(), mod));
                         changed = true;
@@ -253,6 +260,16 @@ void UpdateModFiles(bool init = false, bool reset = false) {
         }
         if (changed) {
             SetEnabledModsCVarValue();
+        }
+    }
+    if (init) {
+        SPDLOG_INFO("HarkinianPad mods: discovered={}, requested={}, loaded={}, duplicate_names={}",
+                    filePaths.size(), enabledModFiles.size(), loadedArchives, duplicateNames);
+        if (duplicateNames != 0) {
+            SPDLOG_WARN("HarkinianPad mods: duplicate filename stems were ignored; use unique pack names");
+        }
+        if (loadedArchives != enabledModFiles.size()) {
+            SPDLOG_WARN("HarkinianPad mods: some requested archives failed to load");
         }
     }
 }
