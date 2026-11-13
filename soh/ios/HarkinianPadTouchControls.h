@@ -10,6 +10,10 @@ void HarkinianPad_SetCustomizableTouchControlsEnabled(int enabled);
 void HarkinianPad_SetTouchControlsOpacity(float opacity);
 void HarkinianPad_BeginTouchLayoutEditing(void);
 void HarkinianPad_SetTouchControlsMenuVisible(int visible);
+void HarkinianPad_SetAutoHideTouchControls(int enabled);
+void HarkinianPad_SetPlayerOneGamepadReady(int ready);
+void HarkinianPad_ShowTouchControls(void);
+int HarkinianPad_TouchControlsHidden(void);
 
 enum {
     HARKINIANPAD_HUD_BUTTON_A = 0,

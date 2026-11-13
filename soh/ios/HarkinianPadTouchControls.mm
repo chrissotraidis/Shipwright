@@ -5,8 +5,11 @@
 #include <SDL.h>
 
 #include "HarkinianPadTouchControls.h"
+#include "HarkinianPadTouchVisibility.h"
 
 static std::atomic_bool sTouchControlsDesired(false);
+static std::atomic_bool sAutoHideTouchControls(true);
+static std::atomic_bool sPlayerOneGamepadReady(false);
 static std::atomic_bool sCustomizableTouchControlsDesired(false);
 static std::atomic<float> sTouchControlsOpacity(1.0f);
 static std::atomic_bool sTouchControlsMenuVisible(false);
@@ -16,6 +19,14 @@ static std::atomic_bool sNativeHudTouchDesired(false);
 static std::atomic_bool sNativeHudTouchGameplayActive(false);
 static std::atomic<float> sNativeHudButtonCenters[HARKINIANPAD_HUD_BUTTON_COUNT][2];
 static std::atomic<float> sNativeHudButtonWidths[HARKINIANPAD_HUD_BUTTON_COUNT];
+
+// The saved preferences plus libultraship's player 1 controller decide whether
+// gameplay controls exist at all; the menu and layout editor only suppress
+// them temporarily.
+static bool HarkinianPad_TouchGameplayControlsVisible(void) {
+    return HarkinianPad::TouchGameplayControlsVisible(
+        { sTouchControlsDesired.load(), sAutoHideTouchControls.load() }, sPlayerOneGamepadReady.load());
+}
 
 static void HarkinianPad_PushKey(SDL_Scancode scancode, BOOL pressed) {
     SDL_Event event = {};
@@ -146,7 +157,9 @@ static void HarkinianPad_PushKey(SDL_Scancode scancode, BOOL pressed) {
 }
 
 - (void)beginInput {
-    if (self.layoutEditing || self.inputPressed) {
+    // A finger that was already down keeps reporting to a removed control;
+    // hidden controls must not start input.
+    if (self.layoutEditing || self.inputPressed || self.window == nil) {
         return;
     }
     self.inputPressed = YES;
@@ -317,7 +330,7 @@ static HarkinianPadTouchButton* sMenuButton;
 }
 
 - (void)touchesBegan:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event {
-    if (self.layoutEditing) {
+    if (self.layoutEditing || self.window == nil) {
         return;
     }
     UITouch* touch = touches.anyObject;
@@ -327,7 +340,7 @@ static HarkinianPadTouchButton* sMenuButton;
 }
 
 - (void)touchesMoved:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event {
-    if (self.layoutEditing) {
+    if (self.layoutEditing || self.window == nil) {
         return;
     }
     UITouch* touch = touches.anyObject;
@@ -1115,7 +1128,7 @@ static HarkinianPadTouchButton* sMenuButton;
 
 - (void)applyNativeHudVisualState {
     const BOOL hideUIKitFaceButtons =
-        sTouchControlsDesired.load() && sNativeHudTouchDesired.load() &&
+        HarkinianPad_TouchGameplayControlsVisible() && sNativeHudTouchDesired.load() &&
         sNativeHudTouchGameplayActive.load() && !sTouchControlsMenuVisible.load() &&
         !sLayoutEditorActive.load();
     for (HarkinianPadTouchButton* button in
@@ -1225,14 +1238,18 @@ static void HarkinianPad_ApplyTouchControlsState(void) {
     }
 
     HarkinianPad_InstallMenuButton(window);
-    if (!sTouchControlsDesired.load() || sTouchControlsMenuVisible.load()) {
+    const BOOL gameplayControlsVisible = HarkinianPad_TouchGameplayControlsVisible();
+    if (!gameplayControlsVisible || sTouchControlsMenuVisible.load()) {
+        // Release held buttons, the stick and a latched Z before removing the
+        // overlay so no input or hit target survives the hide. The menu button
+        // stays installed above.
         if (sTouchOverlay.layoutEditing) {
             [sTouchOverlay endLayoutEditing];
         }
         [sTouchOverlay cancelAllInputs];
         [sTouchOverlay removeFromSuperview];
         sTouchOverlay = nil;
-        if (!sTouchControlsDesired.load()) {
+        if (!gameplayControlsVisible) {
             sLayoutEditorRequested = NO;
         }
         return;
@@ -1299,9 +1316,9 @@ void HarkinianPad_SetTouchControlsOpacity(float opacity) {
 
 void HarkinianPad_BeginTouchLayoutEditing(void) {
     dispatch_async(dispatch_get_main_queue(), ^{
-        if (!sTouchControlsDesired.load() ||
+        if (!HarkinianPad_TouchGameplayControlsVisible() ||
             !sCustomizableTouchControlsDesired.load()) {
-            SDL_Log("[HarkinianPad] customizable touch controls are disabled");
+            SDL_Log("[HarkinianPad] customizable touch controls are hidden or disabled");
             return;
         }
         sLayoutEditorRequested = YES;
@@ -1322,6 +1339,46 @@ void HarkinianPad_SetTouchControlsMenuVisible(int visible) {
     dispatch_async(dispatch_get_main_queue(), ^{
         HarkinianPad_ApplyTouchControlsState();
     });
+}
+
+void HarkinianPad_SetAutoHideTouchControls(int enabled) {
+    sAutoHideTouchControls.store(enabled != 0);
+    dispatch_async(dispatch_get_main_queue(), ^{
+        HarkinianPad_ApplyTouchControlsState();
+    });
+}
+
+void HarkinianPad_SetPlayerOneGamepadReady(int ready) {
+    const bool gamepadReady = ready != 0;
+    if (sPlayerOneGamepadReady.exchange(gamepadReady) == gamepadReady) {
+        return;
+    }
+    SDL_Log("[HarkinianPad] player 1 gameplay controller %s", gamepadReady ? "connected" : "not connected");
+    dispatch_async(dispatch_get_main_queue(), ^{
+        HarkinianPad_ApplyTouchControlsState();
+    });
+}
+
+void HarkinianPad_ShowTouchControls(void) {
+    const HarkinianPad::TouchPreferences preferences =
+        HarkinianPad::ShowTouchControls({ sTouchControlsDesired.load(), sAutoHideTouchControls.load() });
+    sTouchControlsDesired.store(preferences.touchControls);
+    sAutoHideTouchControls.store(preferences.autoHideWithController);
+    dispatch_async(dispatch_get_main_queue(), ^{
+        HarkinianPad_InstallLifecycleObservers();
+        SDL_Log("[HarkinianPad] touch controls shown; auto-hide with controller turned off");
+        if (sTouchControlsMenuVisible.load()) {
+            // Close Settings the same way the menu button opens it so the
+            // restored controls are usable at once.
+            HarkinianPad_PushKey(SDL_SCANCODE_ESCAPE, YES);
+            HarkinianPad_PushKey(SDL_SCANCODE_ESCAPE, NO);
+        }
+        HarkinianPad_ApplyTouchControlsState();
+    });
+}
+
+int HarkinianPad_TouchControlsHidden(void) {
+    return !HarkinianPad_TouchGameplayControlsVisible();
 }
 
 void HarkinianPad_SetNativeHudTouchEnabled(int enabled) {
@@ -1355,7 +1412,7 @@ void HarkinianPad_SetNativeHudTouchGameplayActive(int active) {
 
 int HarkinianPad_GetNativeHudButtonCenter(int button, float aspectRatio, float* x, float* y) {
     if (button < 0 || button >= HARKINIANPAD_HUD_BUTTON_COUNT || x == nullptr || y == nullptr ||
-        aspectRatio <= 0.0f || !sTouchControlsDesired.load() || !sNativeHudTouchDesired.load() ||
+        aspectRatio <= 0.0f || !HarkinianPad_TouchGameplayControlsVisible() || !sNativeHudTouchDesired.load() ||
         !sNativeHudTouchGameplayActive.load() || sTouchControlsMenuVisible.load() ||
         sLayoutEditorActive.load()) {
         return 0;
@@ -1376,7 +1433,7 @@ int HarkinianPad_GetNativeHudButtonCenter(int button, float aspectRatio, float* 
 
 float HarkinianPad_GetNativeHudButtonScale(int button, float aspectRatio) {
     if (button < 0 || button >= HARKINIANPAD_HUD_BUTTON_COUNT || aspectRatio <= 0.0f ||
-        !sTouchControlsDesired.load() || !sNativeHudTouchDesired.load() ||
+        !HarkinianPad_TouchGameplayControlsVisible() || !sNativeHudTouchDesired.load() ||
         !sNativeHudTouchGameplayActive.load() || sTouchControlsMenuVisible.load() ||
         sLayoutEditorActive.load()) {
         return 1.0f;
@@ -1398,7 +1455,7 @@ float HarkinianPad_GetNativeHudButtonScale(int button, float aspectRatio) {
 
 int HarkinianPad_GetNativeHudTouchAlpha(int alpha) {
     const bool nativeTouchArtworkVisible =
-        sTouchControlsDesired.load() && sNativeHudTouchDesired.load() &&
+        HarkinianPad_TouchGameplayControlsVisible() && sNativeHudTouchDesired.load() &&
         sNativeHudTouchGameplayActive.load() && !sTouchControlsMenuVisible.load() &&
         !sLayoutEditorActive.load();
     if (!nativeTouchArtworkVisible) {
