@@ -66,6 +66,9 @@
 #include <SDL_scancode.h>
 #ifdef __IOS__
 #include <SDL_video.h>
+#include <SDL_gamecontroller.h>
+#include "ios/HarkinianPadTouchControls.h"
+#include "ios/HarkinianPadTouchVisibility.h"
 #endif
 #else
 #include <SDL2/SDL_scancode.h>
@@ -1780,6 +1783,26 @@ extern "C" uint64_t GetUnixTimestamp() {
 }
 
 extern "C" void Graph_StartFrame() {
+#ifdef __IOS__
+    // libultraship owns controller-to-player assignment. Touch is player 1's
+    // keyboard input, so only a complete gamepad assigned to player 1 counts.
+    bool playerOneHasGameplayGamepad = false;
+    for (const auto& [instanceId, gamepad] : OTRGlobals::Instance->context->GetControlDeck()
+                                                 ->GetConnectedPhysicalDeviceManager()
+                                                 ->GetConnectedSDLGamepadsForPort(0)) {
+        const HarkinianPad::GamepadProfile profile = {
+            SDL_GameControllerHasAxis(gamepad, SDL_CONTROLLER_AXIS_LEFTX) &&
+                SDL_GameControllerHasAxis(gamepad, SDL_CONTROLLER_AXIS_LEFTY),
+            SDL_GameControllerHasButton(gamepad, SDL_CONTROLLER_BUTTON_A) &&
+                SDL_GameControllerHasButton(gamepad, SDL_CONTROLLER_BUTTON_B) &&
+                SDL_GameControllerHasButton(gamepad, SDL_CONTROLLER_BUTTON_X) &&
+                SDL_GameControllerHasButton(gamepad, SDL_CONTROLLER_BUTTON_Y),
+            SDL_GameControllerHasButton(gamepad, SDL_CONTROLLER_BUTTON_START) == SDL_TRUE,
+        };
+        playerOneHasGameplayGamepad = playerOneHasGameplayGamepad || HarkinianPad::IsGameplayGamepad(profile);
+    }
+    HarkinianPad_SetPlayerOneGamepadReady(playerOneHasGameplayGamepad);
+#endif
     auto gui = std::dynamic_pointer_cast<Fast::Fast3dGui>(Ship::Context::GetRawInstance()->GetWindow()->GetGui());
 #ifndef __WIIU__
     using Ship::KbScancode;

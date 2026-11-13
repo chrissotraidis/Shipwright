@@ -443,6 +443,20 @@ void SohMenu::AddMenuSettings() {
     path.column = SECTION_COLUMN_1;
     AddSidebarEntry("Settings", "Controls", 2);
 #ifdef __IOS__
+    AddWidget(path, "Show Touch Controls", WIDGET_BUTTON)
+        .RaceDisable(false)
+        .PreFunc([](WidgetInfo& info) {
+            info.isHidden = !HarkinianPad_TouchControlsAvailable() || !HarkinianPad_TouchControlsHidden();
+        })
+        .Callback([](WidgetInfo& info) {
+            CVarSetInteger(CVAR_SETTING("HarkinianPad.TouchControls"), 1);
+            CVarSetInteger(CVAR_SETTING("HarkinianPad.AutoHideTouchControls"), 0);
+            Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+            HarkinianPad_ShowTouchControls();
+        })
+        .Options(ButtonOptions().Tooltip(
+            "Closes Settings and shows the touch controller now, even with a controller connected. Turns off "
+            "auto-hide until you turn it back on."));
     AddWidget(path, "Touch Controls", WIDGET_CVAR_CHECKBOX)
         .CVar(CVAR_SETTING("HarkinianPad.TouchControls"))
         .RaceDisable(false)
@@ -455,7 +469,22 @@ void SohMenu::AddMenuSettings() {
         })
         .Options(CheckboxOptions()
                      .DefaultValue(true)
-                     .Tooltip("Shows the touch controller. Disable it when using a physical controller."));
+                     .Tooltip("Shows the touch controller. Turn it off to hide it; Show Touch Controls brings it "
+                              "back."));
+    AddWidget(path, "Auto-hide Touch Controls with Controller", WIDGET_CVAR_CHECKBOX)
+        .CVar(CVAR_SETTING("HarkinianPad.AutoHideTouchControls"))
+        .RaceDisable(false)
+        .PreFunc([](WidgetInfo& info) {
+            info.isHidden = !HarkinianPad_TouchControlsAvailable();
+        })
+        .Callback([](WidgetInfo& info) {
+            HarkinianPad_SetAutoHideTouchControls(
+                CVarGetInteger(CVAR_SETTING("HarkinianPad.AutoHideTouchControls"), 1));
+        })
+        .Options(CheckboxOptions()
+                     .DefaultValue(true)
+                     .Tooltip("Hides the touch controller while a controller with a stick, face buttons and "
+                              "Start is assigned to player 1, and shows it again when that controller leaves."));
     AddWidget(path, "Touch Control Transparency", WIDGET_CVAR_CHECKBOX)
         .CVar(CVAR_SETTING("HarkinianPad.TouchControlTransparency"))
         .RaceDisable(false)
@@ -512,11 +541,11 @@ void SohMenu::AddMenuSettings() {
         .PreFunc([](WidgetInfo& info) {
             info.isHidden = !HarkinianPad_TouchControlsAvailable();
             const bool available =
-                CVarGetInteger(CVAR_SETTING("HarkinianPad.TouchControls"), 1) &&
+                !HarkinianPad_TouchControlsHidden() &&
                 !CVarGetInteger(CVAR_SETTING("HarkinianPad.LegacyFixedTouchControls"), 0);
             info.options->disabled = !available;
             info.options->disabledTooltip =
-                "Enable Touch Controls and turn off Legacy Fixed Touch Controls first.";
+                "Show Touch Controls and turn off Legacy Fixed Touch Controls first.";
         })
         .Callback([](WidgetInfo& info) {
             HarkinianPad_BeginTouchLayoutEditing();

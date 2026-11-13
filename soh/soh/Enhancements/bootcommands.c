@@ -20,6 +20,10 @@ void BootCommands_Init() {
     CVarRegisterInteger(CVAR_SETTING("HarkinianPad.TouchControls"), 1);
     HarkinianPad_SetTouchControlsEnabled(
         CVarGetInteger(CVAR_SETTING("HarkinianPad.TouchControls"), 1));
+    // Defaults on only when the player has never saved a choice.
+    CVarRegisterInteger(CVAR_SETTING("HarkinianPad.AutoHideTouchControls"), 1);
+    HarkinianPad_SetAutoHideTouchControls(
+        CVarGetInteger(CVAR_SETTING("HarkinianPad.AutoHideTouchControls"), 1));
     CVarRegisterInteger(CVAR_SETTING("HarkinianPad.TouchControlTransparency"), 0);
     CVarRegisterFloat(CVAR_SETTING("HarkinianPad.TouchControlOpacity"), 0.5f);
     HarkinianPad_SetTouchControlsOpacity(
