@@ -67,6 +67,7 @@
 #ifdef __IOS__
 #include <SDL_video.h>
 #include <SDL_gamecontroller.h>
+#include <TargetConditionals.h>
 #include "ios/HarkinianPadTouchControls.h"
 #include "ios/HarkinianPadTouchVisibility.h"
 #endif
@@ -1783,9 +1784,11 @@ extern "C" uint64_t GetUnixTimestamp() {
 }
 
 extern "C" void Graph_StartFrame() {
-#ifdef __IOS__
+#if defined(__IOS__) && !TARGET_OS_SIMULATOR
     // libultraship owns controller-to-player assignment. Touch is player 1's
     // keyboard input, so only a complete gamepad assigned to player 1 counts.
+    // Simulator builds skip this: the Simulator always presents its own
+    // wireless MFi "Gamepad", which says nothing about a physical controller.
     bool playerOneHasGameplayGamepad = false;
     for (const auto& [instanceId, gamepad] : OTRGlobals::Instance->context->GetControlDeck()
                                                  ->GetConnectedPhysicalDeviceManager()
